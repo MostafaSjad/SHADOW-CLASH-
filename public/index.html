@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>SHADOW CLASH — 1v1 Fighting</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>%F0%9F%94%A5</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="stage">
+  <canvas id="cv" width="960" height="540"></canvas>
+
+  <!-- ============================ HUD ============================ -->
+  <div id="hud" class="hidden">
+    <div class="hud-top">
+      <div class="side left">
+        <div class="pname" id="name1">PLAYER 1</div>
+        <div class="bar">
+          <div class="ghost" id="ghost1"></div>
+          <div class="fill p1" id="hp1"></div>
+        </div>
+        <div class="pips" id="pips1"><i></i><i></i></div>
+      </div>
+
+      <div class="mid">
+        <div id="timer">60</div>
+        <div id="roundlbl">ROUND 1</div>
+      </div>
+
+      <div class="side right">
+        <div class="pname" id="name2">PLAYER 2</div>
+        <div class="bar">
+          <div class="ghost r" id="ghost2"></div>
+          <div class="fill p2" id="hp2"></div>
+        </div>
+        <div class="pips" id="pips2"><i></i><i></i></div>
+      </div>
+    </div>
+
+    <div class="meters">
+      <div class="mwrap left"><div class="mfill p1" id="mtr1"></div><div class="mnotch"></div></div>
+      <div class="mwrap right"><div class="mfill p2" id="mtr2"></div><div class="mnotch"></div></div>
+    </div>
+
+    <div id="banner"><div class="btext"></div><div class="bsub"></div></div>
+    <div id="combo1" class="combo"></div>
+    <div id="combo2" class="combo"></div>
+
+    <div id="hint">
+      <b>A / D</b> move &nbsp; <b>W</b> jump &nbsp; <b>S</b> crouch &nbsp; <b>J</b> punch &nbsp;
+      <b>K</b> kick &nbsp; <b>L</b> block &nbsp; <b>I / SPACE</b> fireball (50%) → SUPER at 100%
+      <span class="muted">— <b>M</b> mute &nbsp; <b>H</b> hide help</span>
+    </div>
+
+    <div id="netinfo"><span id="pingdot"></span><span id="pingtxt">—</span></div>
+
+    <div id="pauseBanner" class="hidden">OPPONENT DISCONNECTED<span class="sub">waiting for them to come back…</span></div>
+
+    <div id="rematchBox" class="hidden">
+      <button id="rematchBtn" class="btn gold">REMATCH</button>
+      <div id="rematchMsg"></div>
+    </div>
+  </div>
+
+  <!-- ============================ MENU ============================ -->
+  <div id="menu">
+    <div class="menu-inner">
+      <h1>SHADOW<span>CLASH</span></h1>
+      <p class="tag">two players · two browsers · one winner</p>
+
+      <div class="panel">
+        <label class="lbl">YOUR NAME</label>
+        <input id="nameInput" maxlength="14" placeholder="PLAYER" autocomplete="off">
+
+        <div class="row">
+          <button id="createBtn" class="btn cyan big">CREATE ROOM</button>
+        </div>
+
+        <div class="orline"><span>or join with a code</span></div>
+
+        <div class="row">
+          <input id="codeInput" class="code" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false">
+          <button id="joinBtn" class="btn pink">JOIN</button>
+        </div>
+
+        <div class="row spaced">
+          <button id="localBtn" class="btn ghost">⌨ 2 PLAYERS · SAME KEYBOARD</button>
+        </div>
+      </div>
+
+      <div class="howto">
+        <b>HOW TO PLAY</b>
+        <p>Same Wi-Fi: the host runs the game (double-click <i>START GAME.bat</i>), then both of you open the link it prints.
+           Different cities? Forward the port or use a free tunnel (see README).</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================= WAITING ROOM ======================= -->
+  <div id="waiting" class="hidden">
+    <div class="wait-inner">
+      <div class="wait-label">ROOM CODE</div>
+      <div id="roomCode">----</div>
+      <button id="copyBtn" class="btn ghost small">COPY INVITE LINK</button>
+      <div class="wait-status"><span class="spinner"></span><span id="waitText">waiting for your rival…</span></div>
+      <div class="wait-tip">Tip: the link works on any device on your network.</div>
+      <button id="cancelBtn" class="btn ghost small">← BACK</button>
+    </div>
+  </div>
+
+  <!-- ======================== LOCAL CONTROLS ====================== -->
+  <div id="localHelp" class="hidden">
+    <div class="localhelp-inner">
+      <h2>2 PLAYERS · ONE KEYBOARD</h2>
+      <div class="cols">
+        <div>
+          <h3 class="p1c">PLAYER 1</h3>
+          <p><b>A / D</b> move · <b>W</b> jump · <b>S</b> crouch<br>
+             <b>J</b> punch · <b>K</b> kick · <b>L</b> block<br>
+             <b>I</b> fireball / super</p>
+        </div>
+        <div>
+          <h3 class="p2c">PLAYER 2</h3>
+          <p><b>← / →</b> move · <b>↑</b> jump · <b>↓</b> crouch<br>
+             <b>,</b> punch · <b>.</b> kick · <b>/</b> block<br>
+             <b>;</b> or <b>NUM 0</b> fireball / super</p>
+        </div>
+      </div>
+      <p class="muted">First to 2 rounds wins. Fill the meter, then unleash the beam!</p>
+      <button id="localStart" class="btn cyan">START FIGHT</button>
+      <button id="localBack" class="btn ghost small">← BACK</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<script src="sim.js"></script>
+<script src="client.js"></script>
+</body>
+</html>

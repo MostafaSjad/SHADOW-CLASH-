@@ -1,0 +1,14 @@
+{
+  "name": "shadow-clash",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SHADOW CLASH - a 2-player online fighting game. Two browsers, one winner. Zero dependencies.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/run_all.js"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}

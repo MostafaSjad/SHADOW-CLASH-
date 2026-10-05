@@ -1,0 +1,51 @@
+# ============================================================
+#  SHADOW CLASH — git ignore
+# ============================================================
+
+# --- dependencies -------------------------------------------
+# (the game has ZERO npm dependencies, but keep this just in case)
+node_modules/
+
+# --- logs ----------------------------------------------------
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- local environment --------------------------------------
+.env
+.env.local
+.env.*.local
+
+# --- OS junk -------------------------------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+desktop.ini
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# --- editors / IDEs ------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- build & temp output -------------------------------------
+dist/
+build/
+out/
+tmp/
+.tmp/
+*.tmp
+
+# --- test artifacts ------------------------------------------
+coverage/
+tests/*.out
+
+# --- opencode -------------------------------------------------
+.opencode/
