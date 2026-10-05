@@ -4,6 +4,7 @@
 
 - 🥊 Full fighting-game systems: walking, jumping, crouching, blocking, combos, hitstop, chip damage, best-of-3 rounds
 - 🔥 Fill your meter, throw fireballs, and at 100% unleash a **screen-wide SUPER BEAM** (with super armor)
+- 🗺️ **4 hand-drawn arenas** — Crimson Shrine, Neon District, Moonlit Bamboo and Aurora Peak — with the host picking the stage in the lobby (or random)
 - 🌐 Online play with 4-letter room codes and shareable invite links — same Wi-Fi or over the internet
 - ⌨️ Bonus mode: **2 players on one keyboard** + a CPU demo fight on the title screen
 - 📦 **Zero dependencies.** One command to run: `node server.js`
@@ -22,17 +23,18 @@
 5. [How a match works (rules)](#how-a-match-works-rules)
 6. [Combat guide + full frame data](#combat-guide--full-frame-data)
 7. [HUD explained](#hud-explained)
-8. [Lobby, invite links and reconnection](#lobby-invite-links-and-reconnection)
-9. [Project structure](#project-structure)
-10. [How it works (architecture)](#how-it-works-architecture)
-11. [Network protocol reference](#network-protocol-reference)
-12. [Running the server](#running-the-server)
-13. [Testing](#testing)
-14. [Tweaking the game](#tweaking-the-game)
-15. [Troubleshooting](#troubleshooting)
-16. [FAQ](#faq)
-17. [Known limitations](#known-limitations)
-18. [License](#license)
+8. [Arenas (the four maps)](#arenas-the-four-maps)
+9. [Lobby, invite links and reconnection](#lobby-invite-links-and-reconnection)
+10. [Project structure](#project-structure)
+11. [How it works (architecture)](#how-it-works-architecture)
+12. [Network protocol reference](#network-protocol-reference)
+13. [Running the server](#running-the-server)
+14. [Testing](#testing)
+15. [Tweaking the game](#tweaking-the-game)
+16. [Troubleshooting](#troubleshooting)
+17. [FAQ](#faq)
+18. [Known limitations](#known-limitations)
+19. [License](#license)
 
 ---
 
@@ -260,6 +262,28 @@ intro (110 frames ≈ 1.8 s)  →  fight (≤ 60 s)  →  roundEnd (210 frames �
 
 ---
 
+## Arenas (the four maps)
+
+All four stages are **drawn by code** (`public/maps.js`) — no image files anywhere. Each one is a pure `draw(ctx, time)` function, which is why the lobby thumbnails are real previews of the maps (rendered once into tiny canvases) rather than static screenshots.
+
+| # | Arena | Vibe | Ambience |
+|---|---|---|---|
+| 1 | **Crimson Shrine** — *Sunset Dojo* | Golden-hour sky, glowing sun, mountains, pagoda, torii gate, swaying paper lanterns | rising embers, distant birds |
+| 2 | **Neon District** — *Rooftop Brawl* | Midnight skyline with lit windows, sweeping searchlights, neon signs and a flickering **SHADOW** billboard, wet-roof puddle reflections | drifting cyan/magenta light motes |
+| 3 | **Moonlit Bamboo** — *Whispering Grove* | Giant moon, three parallax layers of swaying bamboo with leaves, drifting fog, glowing stone lantern, reflected moonlight on the path | fireflies + falling leaves |
+| 4 | **Aurora Peak** — *Frozen Summit* | Dancing green/cyan/violet aurora ribbons, snowy peaks, pine ridge, frozen ground with an aurora tint and sparkles | swaying snowfall |
+
+**How an arena gets chosen:**
+
+- **Online:** every room starts with a random arena. The **host** can change it in the waiting room by clicking one of the four thumbnails; the guest sees the full strip too (dimmed, "— host picks") and both clients stay in sync through the server. The current arena name is shown under the round counter in the HUD.
+- **Rematch:** if the host never manually picked, the rematch **rerolls to a random arena** for variety; if they did pick one, it stays.
+- **Local 2P:** pick any arena (or leave the random one) on the setup screen before pressing START FIGHT.
+- **Title screen:** the CPU demo fight rotates to a random arena whenever it resets, so the menu shows off all four.
+
+Each map also has its own ambient particle weather (embers, motes, fireflies, snow) that drifts through the fight.
+
+---
+
 ## Lobby, invite links and reconnection
 
 - **Room codes** are exactly 4 characters from a 32-character alphabet that avoids lookalikes: `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` — no `I`, `O`, `0` or `1`. Lowercase input is fine. Someone else hosting and typing the wrong code sees "Room "XXXX" not found. Check the code."
@@ -287,6 +311,7 @@ Suprice/
 │   ├── index.html          menu, waiting room, HUD markup, local-2P help screen
 │   ├── style.css           neon arcade styling (pure CSS, no fonts/images)
 │   ├── sim.js              ⭐ the whole combat simulation — shared by server AND browser
+│   ├── maps.js             ⭐ the four arenas, drawn entirely in code — ids shared with the server
 │   └── client.js           rendering, particles, screen shake, audio synthesis, input, netcode
 └── tests/
     ├── run_all.js          runs the three suites below (npm test)
@@ -320,7 +345,7 @@ client B ──inputs──┘                       └──snapshot──▶ 
 - Simulated at 60 fps, rendered at the display's refresh rate.
 - **Juice:** screen shake, white impact flash, hitstop freeze frames, expanding rings, sparks, dust, fireball trails, muzzle flares, floating damage numbers, combo popups, KO bursts.
 - The fighters are drawn procedurally: capsule limbs, per-state poses (idle breathing, walk cycle, guard, hit reaction, KO fall, charged super, victory pose), plus headband ribbons that wave with time. Player 1 is blue/cyan, Player 2 is red/gold.
-- The background is a parallax sunset dojo: gradient sky, glowing sun, drifting cloud bands, mountains, pagoda and torii silhouettes, swaying lanterns, neon floor edge, perspective lines, ambient embers, vignette.
+- Every arena is a stack of parallax layers (sky gradients, celestial bodies, mountains / skylines / bamboo forests / aurora ribbons, then the stage floor) plus its own ambient particles. Because each map is a pure function of time, it can be rendered into the game canvas or into the tiny lobby thumbnails with the same code.
 
 ### Audio
 
@@ -350,6 +375,7 @@ Everything is JSON text over a WebSocket. Clients send **inputs**, the server se
 | `create` | `name` | Create a room and take seat 0. |
 | `join` | `code`, `name`, `token?` | Join (or rejoin) a room. `token` from a previous join = reclaim your seat. |
 | `i` | `k` (held bits), `p` (newly-pressed bits) | Input state. Sent every frame while playing. |
+| `map` | `id` | Host only, lobby only: choose the arena from `maps.js`. |
 | `rematch` | — | Vote for a rematch (only valid after the match ended). |
 | `ping` | `ts` | RTT probe; timestamp echoed back. |
 | `leave` | — | Leave the room (waiting-room back button). |
@@ -358,16 +384,16 @@ Everything is JSON text over a WebSocket. Clients send **inputs**, the server se
 
 | `t` | Payload | Meaning |
 |---|---|---|
-| `w` | `seat`, `code`, `token`, `lan` | Welcome / seat taken. `lan` = best LAN address for invite links. |
+| `w` | `seat`, `code`, `token`, `lan`, `map` | Welcome / seat taken. `lan` = best LAN address for invite links; `map` = current arena. |
 | `wait` | — | You are alone in the room; waiting for an opponent. |
-| `start` | `names[2]` | Both seats filled — the match begins. |
+| `start` | `names[2]`, `map` | Both seats filled — the match begins on `map`. |
 | `st` | `s` (snapshot) | World state, ~60×/second. See below. |
 | `paused` | — | Opponent's connection dropped; sim is frozen. |
 | `resumed` | — | Opponent came back; sim resumed. |
 | `left` | — | Opponent left / grace period expired. |
 | `vote` | — | Your rematch vote was registered, waiting for the other player. |
 | `oppVote` | — | The opponent pressed rematch. |
-| `rematch` | — | Both voted — a fresh match starts now. |
+| `rematch` | `map` | Both voted — a fresh match starts now on `map` (rerolled if the host hadn't picked one). |
 | `pong` | `ts` | Reply to `ping`; client computes RTT. |
 | `err` | `m` | Error text (e.g. "Room not found", "Room is full"). |
 
@@ -435,8 +461,8 @@ node tests/test_client.js
 | Suite | What it proves |
 |---|---|
 | `test_sim.js` | Attacks connect and deal damage; blocking prevents damage; meter gain/costs; fireball spawn + chip; super charge + beam damage; KO → round flow → match end; `resetMatch`; a 3-minute random-input fuzz must not crash or produce invalid state. |
-| `test_net.js` | Boots a real server on port 3123 and speaks the real WebSocket protocol: static serving + 404s, create/join, start, live snapshots, an online hit landing, ping/pong, disconnect → pause, token rejoin, name-based "ghost takeover" after a page reload, leave notification, room-full rejection, startup banner. |
-| `test_client.js` | Loads `public/client.js` into a stubbed DOM + canvas and runs it: attract mode frames, local 2P with key input, typing in text fields (the WASD regression), Enter/Escape handling, the full networked message flow including effects, match end, rematch and opponent-left. |
+| `test_net.js` | Boots a real server on port 3123 and speaks the real WebSocket protocol: static serving + 404s, create/join, arena picking and lockout rules, start, live snapshots, an online hit landing, ping/pong, disconnect → pause, token rejoin, name-based "ghost takeover" after a page reload, leave notification, room-full rejection, startup banner. |
+| `test_client.js` | Loads `public/client.js` into a stubbed DOM + canvas and runs it: attract mode frames, arena pickers built with 4 maps, local 2P with key input, typing in text fields (the WASD regression), Enter/Escape handling, the full networked message flow including arena changes, effects, match end, rematch and opponent-left. |
 
 ---
 
@@ -464,6 +490,7 @@ Other handy knobs:
 
 | Where | What |
 |---|---|
+| `public/maps.js` → `LIST` | the four arenas. Add your own by appending `{id, name, tag, draw, amb}` — the lobby picker, protocol validation and thumbnails all update automatically. Each `draw(ctx, t)` is a pure function of time. |
 | `server.js` → `START_PORT`, `MAX_ROOM_LIFE` | default port, empty-room lifetime |
 | `client.js` → `netView()` `- 0.048` | interpolation delay (lower = snappier, higher = smoother on bad links) |
 | `client.js` → `musicStart()` `116` | music tempo |
@@ -502,6 +529,9 @@ Two per room. Multiple rooms can run at the same time on one server (different c
 
 **Can I play alone?**
 You can watch the CPU-vs-CPU demo on the title screen, but there's no single-player arcade mode (yet). For practicing, open two windows and fight yourself.
+
+**Can we choose which arena we fight in?**
+Yes — the host clicks one of the four thumbnails in the online waiting room and the choice syncs to the guest instantly. If nobody picks, the arena is random (and rematches reroll it). Local 2P mode has its own picker on the setup screen.
 
 **Is there a ranking / accounts / saved stats?**
 No. Nothing is stored — not even on the server (rooms are in-memory) — except your name and last room code in your own browser's `localStorage`/`sessionStorage`.

@@ -6,6 +6,7 @@ const ROOT = path.resolve(__dirname, '..');
 const SimPath = path.join(ROOT, 'public', 'sim.js');
 const ClientPath = path.join(ROOT, 'public', 'client.js');
 const Sim = require(SimPath);
+const Maps = require(path.join(ROOT, 'public', 'maps.js'));
 
 let failures = 0;
 function check(name, cond, extra) { if (cond) console.log('  PASS', name); else { failures++; console.log('  FAIL', name, extra === undefined ? '' : extra); } }
@@ -24,6 +25,7 @@ function makeCtx() {
   });
 }
 const els = {};
+let dynCount = 0;
 function makeEl(id) {
   const el = {
     id, tagName: 'INPUT', isContentEditable: false,
@@ -39,7 +41,7 @@ function makeEl(id) {
     },
     addEventListener(type, fn) { (this._listeners[type] = this._listeners[type] || []).push(fn); },
     querySelector() { return makeEl(id + '-child'); },
-    appendChild() {},
+    appendChild(c) { this.children.push(c); },
     blur() { this._focused = false; },
     click() { this.fire('click'); },
     fire(type, ev) { (this._listeners[type] || []).forEach(f => f(ev || { preventDefault() {} })); }
@@ -48,6 +50,15 @@ function makeEl(id) {
 }
 const documentStub = {
   hidden: false,
+  createElement(tag) {
+    const el = makeEl('dyn-' + tag + '-' + (dynCount++));
+    if (tag === 'canvas') {
+      el.width = 0;
+      el.height = 0;
+      el.getContext = () => makeCtx();
+    }
+    return el;
+  },
   getElementById(id) {
     if (!els[id]) {
       els[id] = makeEl(id);
@@ -71,6 +82,7 @@ class FakeWS {
 
 const sandboxGlobal = {
   Sim,
+  Maps,
   console,
   setTimeout, clearTimeout, setInterval, clearInterval,
   performance,
@@ -119,6 +131,12 @@ function fireWin(type, ev) { (winListeners[type] || []).forEach(f => f(ev || { p
 try {
   stepFrames(180);
   check('attract mode renders 180 frames', true);
+  check('arena picker built with 4 maps',
+    els['mapStrip'] && els['mapStrip'].children.length === 4,
+    els['mapStrip'] ? els['mapStrip'].children.length : 'missing');
+  check('local arena picker built with 4 maps',
+    els['mapStripLocal'] && els['mapStripLocal'].children.length === 4,
+    els['mapStripLocal'] ? els['mapStripLocal'].children.length : 'missing');
 } catch (e) { check('attract mode renders 180 frames', false, e.stack.split('\n').slice(0, 4).join(' | ')); }
 
 // ---------------- typing in inputs must not be swallowed ----------------
@@ -174,9 +192,10 @@ try {
   if (ws.onopen) ws.onopen();
   check('client sent create', ws.sent.some(m => m.t === 'create'), JSON.stringify(ws.sent));
 
-  // server: room welcome
-  ws.onmessage({ data: JSON.stringify({ t: 'w', seat: 0, code: 'ABCD', token: 'tok', lan: '192.168.1.5' }) });
-  ws.onmessage({ data: JSON.stringify({ t: 'start', names: ['ADA', 'BOB'] }) });
+  // server: room welcome (with an arena) + match start
+  ws.onmessage({ data: JSON.stringify({ t: 'w', seat: 0, code: 'ABCD', token: 'tok', lan: '192.168.1.5', map: 'city' }) });
+  ws.onmessage({ data: JSON.stringify({ t: 'start', names: ['ADA', 'BOB'], map: 'bamboo' }) });
+  ws.onmessage({ data: JSON.stringify({ t: 'map', id: 'aurora' }) });   // switch arena
 
   // feed some real snapshots: run a sim game with a bit of action
   const g = Sim.createGame();

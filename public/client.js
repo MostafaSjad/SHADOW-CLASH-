@@ -28,7 +28,8 @@
   var state = {
     mode: 'menu',              // menu | wait | net | local
     view: null,                // snapshot used for rendering
-    local: { game: null },
+    map: null,                 // current arena id (see maps.js)
+    local: { game: null, map: null },
     net: {
       ws: null, open: false, seat: 0, code: null, token: null, name: '',
       buf: [], latest: null, ping: 0, paused: false, voted: false, oppVoted: false,
@@ -37,7 +38,7 @@
     attract: { game: null, endT: 0, bots: null },
     ghost: [100, 100],
     fx: { parts: [], texts: [], shake: 0, flash: 0 },
-    ui: { lastBannerKey: '', lastCombo: [0, 0], hintT: 0 }
+    ui: { lastBannerKey: '', lastCombo: [0, 0], hintT: 0, strips: [], lastMap: '' }
   };
 
   var fExtras = [
@@ -390,6 +391,7 @@
       var p = parts[i];
       p.x += p.vx * steps;
       p.y += p.vy * steps;
+      if (p.sway) p.x += Math.sin((p.life || 0) * p.sway + (p.seed || 0)) * 0.6 * steps;
       p.vy += p.g * steps;
       p.vx *= (1 - 0.01 * steps);
       p.life -= steps;
@@ -407,14 +409,8 @@
     state.fx.flash *= Math.pow(0.88, steps);
     if (state.fx.flash < 0.01) state.fx.flash = 0;
 
-    // ambient embers on the attract screen
-    if (state.mode === 'menu' && Math.random() < 0.25) {
-      spawnPart({
-        type: 'spark', x: rnd(0, VW), y: GY + rnd(0, 50),
-        vx: rnd(-0.4, 0.4), vy: rnd(-1.6, -0.6), g: -0.004,
-        life: rnd(30, 70), color: 'rgba(255,170,80,0.8)', size: rnd(1.5, 3.5)
-      });
-    }
+    // per-arena ambience (embers, fireflies, snow, petals…)
+    Maps.ambient(state.map, performance.now() / 1000, spawnPart);
   }
 
   // ========================================================================
@@ -424,16 +420,6 @@
     { main: '#3f8cff', dark: '#12275c', accent: '#35e0ff', skin: '#ffd9a8', aura: '53,224,255' },
     { main: '#ff3b5c', dark: '#5c0f22', accent: '#ffd23f', skin: '#f2c39a', aura: '255,80,120' }
   ];
-
-  function rr(x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
 
   function limb(x1, y1, x2, y2, bend, w, color, outline) {
     var mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
@@ -446,104 +432,6 @@
     }
     ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(cx, cy, x2, y2);
     ctx.lineWidth = w; ctx.strokeStyle = color; ctx.stroke();
-  }
-
-  var lastSky = null;
-  function drawBackground(t) {
-    // sky
-    if (!lastSky) {
-      lastSky = ctx.createLinearGradient(0, 0, 0, GY);
-      lastSky.addColorStop(0, '#0b0a24');
-      lastSky.addColorStop(0.42, '#2a1445');
-      lastSky.addColorStop(0.72, '#6b2550');
-      lastSky.addColorStop(1, '#c9555f');
-    }
-    ctx.fillStyle = lastSky;
-    ctx.fillRect(-40, -40, VW + 80, GY + 40);
-
-    // sun
-    var sunX = 690, sunY = 320, sr = 95;
-    var sg = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sr * 2.1);
-    sg.addColorStop(0, 'rgba(255,220,140,0.95)');
-    sg.addColorStop(0.35, 'rgba(255,150,90,0.5)');
-    sg.addColorStop(1, 'rgba(255,110,90,0)');
-    ctx.fillStyle = sg;
-    ctx.beginPath(); ctx.arc(sunX, sunY, sr * 2.1, 0, 7); ctx.fill();
-    ctx.fillStyle = 'rgba(255,236,180,0.95)';
-    ctx.beginPath(); ctx.arc(sunX, sunY, sr * 0.72, 0, 7); ctx.fill();
-
-    // clouds
-    ctx.fillStyle = 'rgba(30,16,52,0.55)';
-    for (var c = 0; c < 4; c++) {
-      var cw = 150 + c * 40;
-      var cxp = ((t * (6 + c * 3) + c * 420) % (VW + 500)) - 250;
-      var cyp = 90 + c * 46;
-      ctx.beginPath();
-      ctx.ellipse(cxp, cyp, cw * 0.5, 11, 0, 0, 7);
-      ctx.ellipse(cxp + cw * 0.24, cyp - 9, cw * 0.3, 9, 0, 0, 7);
-      ctx.fill();
-    }
-
-    // far mountains
-    ctx.fillStyle = '#241238';
-    ctx.beginPath();
-    ctx.moveTo(-40, GY);
-    var pts = [[0, 350], [90, 300], [200, 355], [320, 285], [430, 345], [540, 300], [660, 360], [780, 290], [900, 350], [1000, 320]];
-    for (var i = 0; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-    ctx.lineTo(VW + 40, GY); ctx.closePath(); ctx.fill();
-
-    // pagoda + torii silhouettes
-    ctx.fillStyle = '#1a0c2a';
-    ctx.fillRect(120, 330, 6, GY - 330);
-    for (var f = 0; f < 3; f++) {
-      var fy = 332 - f * 34, fw = 58 - f * 12;
-      ctx.beginPath();
-      ctx.moveTo(123 - fw, fy + 26);
-      ctx.lineTo(123, fy);
-      ctx.lineTo(123 + fw, fy + 26);
-      ctx.closePath(); ctx.fill();
-    }
-    ctx.fillStyle = '#160a24';
-    ctx.fillRect(810, 330, 8, GY - 330);
-    ctx.fillRect(806, 322, 70, 8);
-    ctx.fillRect(856, 330, 8, GY - 330);
-    ctx.fillRect(800, 352, 76, 7);
-
-    // lanterns
-    for (var L = 0; L < 2; L++) {
-      var lx = L === 0 ? 260 : 700;
-      var sway = Math.sin(t * 1.4 + L) * 4;
-      ctx.strokeStyle = 'rgba(255,200,120,0.35)'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(lx, 200); ctx.quadraticCurveTo(lx + sway * 0.5, 250, lx + sway, 285); ctx.stroke();
-      ctx.save();
-      ctx.shadowBlur = 22; ctx.shadowColor = 'rgba(255,140,60,0.9)';
-      ctx.fillStyle = '#ff9b4a';
-      ctx.beginPath(); ctx.ellipse(lx + sway, 296, 12, 16, 0, 0, 7); ctx.fill();
-      ctx.restore();
-    }
-
-    // ground slab
-    var gg = ctx.createLinearGradient(0, GY, 0, VH);
-    gg.addColorStop(0, '#160b1e');
-    gg.addColorStop(1, '#06040a');
-    ctx.fillStyle = gg;
-    ctx.fillRect(-40, GY, VW + 80, VH - GY + 40);
-    // neon floor edge
-    var eg = ctx.createLinearGradient(0, GY - 2, VW, GY - 2);
-    eg.addColorStop(0, 'rgba(53,224,255,0.05)');
-    eg.addColorStop(0.5, 'rgba(53,224,255,0.85)');
-    eg.addColorStop(1, 'rgba(255,59,122,0.05)');
-    ctx.fillStyle = eg;
-    ctx.fillRect(0, GY - 2, VW, 3);
-    // perspective lines
-    ctx.strokeStyle = 'rgba(90,180,255,0.09)';
-    ctx.lineWidth = 1;
-    for (var v = -2; v <= 10; v++) {
-      ctx.beginPath();
-      ctx.moveTo(VW / 2 + v * 40, GY + 4);
-      ctx.lineTo(VW / 2 + v * 190, VH + 20);
-      ctx.stroke();
-    }
   }
 
   function computePose(f, t, i, walkPhase) {
@@ -866,9 +754,13 @@
     for (var i = 0; i < parts.length; i++) {
       var p = parts[i];
       var k = p.life / p.max;
+      var alpha = clamp(k, 0, 1) * 0.9;
+      if (p.type === 'firefly') {
+        alpha *= 0.45 + 0.55 * (0.5 + 0.5 * Math.sin((p.life || 0) * 0.22 + (p.seed || 0)));
+      }
       ctx.save();
       ctx.globalCompositeOperation = p.add ? 'lighter' : 'source-over';
-      ctx.globalAlpha = clamp(k, 0, 1) * 0.9;
+      ctx.globalAlpha = alpha;
       if (p.type === 'ring') {
         ctx.strokeStyle = p.color;
         ctx.lineWidth = p.size * k;
@@ -908,7 +800,7 @@
     ctx.save();
     if (shake > 0.3) ctx.translate(rnd(-shake, shake), rnd(-shake, shake) * 0.6);
 
-    drawBackground(t);
+    Maps.draw(state.map, ctx, t);
 
     if (v) {
       var i;
@@ -1013,6 +905,7 @@
           sessionStorage.setItem('sc_name', n.name);
         } catch (e) { /* ignore */ }
         window.scLan = m.lan;
+        if (m.map) state.map = m.map;
         if (!n.started) {
           // fresh room or a rejoin from the menu -> show the waiting screen
           showWaiting(m.code);
@@ -1022,6 +915,7 @@
           $('pauseBanner').classList.add('hidden');
           state.mode = 'net';
         }
+        syncMapStrips();
         break;
       case 'start':
         hide($('menu')); hide($('waiting')); hide($('localHelp'));
@@ -1033,6 +927,8 @@
         n.paused = false;
         n.voted = false; n.oppVoted = false;
         n.buf = [];
+        if (m.map) state.map = m.map;
+        syncMapStrips();
         state.ui.lastBannerKey = '';
         state.ui.lastCombo = [0, 0];
         state.ghost = [100, 100];
@@ -1060,6 +956,9 @@
         $('pauseBanner').innerHTML = 'OPPONENT DISCONNECTED<span class="sub">waiting for them to come back…</span>';
         $('pauseBanner').classList.remove('hidden');
         break;
+      case 'map':
+        if (m.id) { state.map = m.id; syncMapStrips(); }
+        break;
       case 'resumed':
         n.paused = false;
         n.buf = [];
@@ -1082,6 +981,7 @@
         n.voted = false; n.oppVoted = false;
         n.buf = [];
         state.ui.lastBannerKey = '';
+        if (m.map) { state.map = m.map; syncMapStrips(); }
         $('rematchBox').classList.add('hidden');
         $('rematchMsg').textContent = '';
         break;
@@ -1136,6 +1036,8 @@
     state.mode = 'local';
     hide($('menu')); hide($('waiting')); hide($('localHelp'));
     show($('hud'));
+    state.map = state.local.map || Maps.randomId();
+    syncMapStrips();
     $('name1').textContent = 'PLAYER 1';
     $('name2').textContent = 'PLAYER 2';
     $('rematchBox').classList.add('hidden');
@@ -1173,6 +1075,8 @@
       { move: 0, mt: 0, at: 0 }
     ];
     state.attract.endT = 0;
+    state.map = Maps.randomId();    // showcase a new arena every demo fight
+    syncMapStrips();
   }
 
   function attractStep() {
@@ -1185,6 +1089,8 @@
         g.fighters[0].meter = 45;
         g.fighters[1].meter = 45;
         state.attract.endT = 0;
+        state.map = Maps.randomId();   // rotate arenas between demo fights
+        syncMapStrips();
       }
     } else {
       for (var i = 0; i < 2; i++) {
@@ -1241,6 +1147,10 @@
     $('timer').textContent = v.tm;
     $('timer').classList.toggle('urgent', v.tm <= 10 && v.ph === 'fight');
     $('roundlbl').textContent = 'ROUND ' + v.r;
+    if (state.map !== state.ui.lastMap) {
+      state.ui.lastMap = state.map;
+      $('maplbl').textContent = Maps.name(state.map);
+    }
 
     var pips1 = $('pips1').children, pips2 = $('pips2').children;
     for (var i = 0; i < 2; i++) {
@@ -1356,6 +1266,62 @@
     return location.protocol + '//' + host + '/?room=' + code;
   }
 
+  // ------------------------------------------------------------ arena picker
+  function mapThumbCanvas(id) {
+    var c = document.createElement('canvas');
+    var w = 176, h = 99;
+    c.width = w * 2;
+    c.height = h * 2;
+    var x = c.getContext('2d');
+    if (x) {
+      var s = (w * 2) / 960;
+      x.setTransform(s, 0, 0, s, 0, 0);
+      Maps.draw(id, x, 1.7);   // a fixed "moment in time" for every preview
+    }
+    return c;
+  }
+
+  function buildMapStrip(el, kind, onPick) {
+    if (!el) return;
+    el.innerHTML = '';
+    var cards = {};
+    Maps.list.forEach(function (m) {
+      var b = document.createElement('button');
+      b.className = 'mapcard';
+      b.type = 'button';
+      b.title = m.name + ' — ' + m.tag;
+      b.appendChild(mapThumbCanvas(m.id));
+      var nm = document.createElement('span');
+      nm.textContent = m.name;
+      b.appendChild(nm);
+      var tg = document.createElement('em');
+      tg.textContent = m.tag;
+      b.appendChild(tg);
+      b.addEventListener('click', function () { if (onPick) onPick(m.id); });
+      el.appendChild(b);
+      cards[m.id] = b;
+    });
+    state.ui.strips.push({ el: el, cards: cards, kind: kind });
+    syncMapStrips();
+  }
+
+  function syncMapStrips() {
+    state.ui.strips.forEach(function (s) {
+      var interactive = s.kind === 'local' || (s.kind === 'wait' && state.net.seat === 0 && state.mode === 'wait');
+      for (var id in s.cards) {
+        if (!Object.prototype.hasOwnProperty.call(s.cards, id)) continue;
+        s.cards[id].classList.toggle('sel', id === state.map);
+        s.cards[id].classList.toggle('locked', !interactive);
+      }
+    });
+    var who = $('mapWho');
+    if (who) {
+      who.textContent = state.mode === 'wait'
+        ? (state.net.seat === 0 ? '— you pick' : '— host picks')
+        : '';
+    }
+  }
+
   // menu wiring
   $('createBtn').addEventListener('click', function () {
     audioInit();
@@ -1422,6 +1388,19 @@
       $('rematchMsg').textContent = 'waiting for opponent…';
       send({ t: 'rematch' });
     }
+  });
+
+  // arena pickers: waiting room = host only / local mode = free choice
+  buildMapStrip($('mapStrip'), 'wait', function (id) {
+    if (state.mode !== 'wait' || state.net.seat !== 0) return;
+    state.map = id;
+    syncMapStrips();
+    send({ t: 'map', id: id });
+  });
+  buildMapStrip($('mapStripLocal'), 'local', function (id) {
+    state.local.map = id;
+    state.map = id;
+    syncMapStrips();
   });
 
   // pre-fill room code from ?room=CODE (invite link) or offer to rejoin the last match

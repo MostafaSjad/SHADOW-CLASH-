@@ -26,6 +26,7 @@
       <div class="mid">
         <div id="timer">60</div>
         <div id="roundlbl">ROUND 1</div>
+        <div id="maplbl"></div>
       </div>
 
       <div class="side right">
@@ -103,6 +104,10 @@
       <div class="wait-label">ROOM CODE</div>
       <div id="roomCode">----</div>
       <button id="copyBtn" class="btn ghost small">COPY INVITE LINK</button>
+      <div class="map-pick">
+        <div class="map-pick-label">ARENA <span id="mapWho"></span></div>
+        <div id="mapStrip" class="map-strip"></div>
+      </div>
       <div class="wait-status"><span class="spinner"></span><span id="waitText">waiting for your rival…</span></div>
       <div class="wait-tip">Tip: the link works on any device on your network.</div>
       <button id="cancelBtn" class="btn ghost small">← BACK</button>
@@ -128,6 +133,10 @@
         </div>
       </div>
       <p class="muted">First to 2 rounds wins. Fill the meter, then unleash the beam!</p>
+      <div class="map-pick">
+        <div class="map-pick-label">ARENA <span>— pick your stage</span></div>
+        <div id="mapStripLocal" class="map-strip"></div>
+      </div>
       <button id="localStart" class="btn cyan">START FIGHT</button>
       <button id="localBack" class="btn ghost small">← BACK</button>
     </div>
@@ -137,6 +146,7 @@
 </div>
 
 <script src="sim.js"></script>
+<script src="maps.js"></script>
 <script src="client.js"></script>
 </body>
 </html>

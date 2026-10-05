@@ -15,6 +15,7 @@ const crypto = require('crypto');
 const os = require('os');
 const dgram = require('dgram');
 const Sim = require('./public/sim.js');
+const Maps = require('./public/maps.js');
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const START_PORT = Number(process.env.PORT) || 3000;
@@ -254,6 +255,8 @@ function makeRoom() {
     code: makeCode(),
     slots: [null, null],
     game: null,
+    map: Maps.randomId(),
+    mapPicked: false,
     started: false,
     purgeTimer: null,
     lastActivity: Date.now()
@@ -284,9 +287,10 @@ function startMatch(room) {
   room.started = true;
   broadcast(room, {
     t: 'start',
-    names: [room.slots[0].name, room.slots[1].name]
+    names: [room.slots[0].name, room.slots[1].name],
+    map: room.map
   });
-  log(`room ${room.code}: match started`);
+  log(`room ${room.code}: match started on ${room.map}`);
 }
 
 function safeName(n) {
@@ -307,7 +311,7 @@ function handleMessage(player, text) {
       player.seat = 0;
       player.room = room;
       room.slots[0] = player;
-      send(player, { t: 'w', seat: 0, code: room.code, token: player.token, lan: lanAddress() });
+      send(player, { t: 'w', seat: 0, code: room.code, token: player.token, lan: lanAddress(), map: room.map });
       if (bothReady(room)) startMatch(room); else send(player, { t: 'wait' });
       log(`room ${room.code} created by ${player.name}`);
       break;
@@ -359,7 +363,7 @@ function handleMessage(player, text) {
       room.lastActivity = Date.now();
       if (room.purgeTimer) { clearTimeout(room.purgeTimer); room.purgeTimer = null; }
 
-      send(player, { t: 'w', seat: player.seat, code: room.code, token: player.token, lan: lanAddress() });
+      send(player, { t: 'w', seat: player.seat, code: room.code, token: player.token, lan: lanAddress(), map: room.map });
       log(`room ${room.code}: ${player.name} joined seat ${slotIdx}`);
 
       if (bothReady(room)) {
@@ -382,6 +386,17 @@ function handleMessage(player, text) {
       player.pressed |= (m.p | 0);
       break;
     }
+    case 'map': {
+      const room = player.room;
+      if (!room || player.seat !== 0) break;                   // host only
+      if (room.game && !room.game.over) break;                 // locked during a match
+      if (Maps.ids.indexOf(String(m.id)) === -1) break;        // unknown arena
+      room.map = String(m.id);
+      room.mapPicked = true;
+      broadcast(room, { t: 'map', id: room.map });
+      log(`room ${room.code}: map set to ${room.map}`);
+      break;
+    }
     case 'rematch': {
       const room = player.room;
       if (!room || !room.game || !room.game.over) break;
@@ -390,8 +405,9 @@ function handleMessage(player, text) {
       if (bothVoted) {
         room.slots[0].vote = room.slots[1].vote = false;
         Sim.resetMatch(room.game);
-        broadcast(room, { t: 'rematch' });
-        log(`room ${room.code}: rematch`);
+        if (!room.mapPicked) room.map = Maps.randomId();   // surprise reroll
+        broadcast(room, { t: 'rematch', map: room.map });
+        log(`room ${room.code}: rematch on ${room.map}`);
       } else {
         send(player, { t: 'vote' });
         send(other(player), { t: 'oppVote' });

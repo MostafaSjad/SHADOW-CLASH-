@@ -1,6 +1,7 @@
 /* end-to-end test: http serving + websocket protocol + full online room flow */
 const { spawn } = require('child_process');
 const path = require('path');
+const Maps = require(path.join(__dirname, '..', 'public', 'maps.js'));
 const PORT = 3123;
 const BASE = 'http://127.0.0.1:' + PORT;
 let failures = 0;
@@ -13,12 +14,14 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 function mkClient(tag) {
   const ws = new WebSocket('ws://127.0.0.1:' + PORT);
   const q = [];
+  const all = [];
   const waiters = [];
   let open = false;
   ws.onopen = () => { open = true; };
   ws.onmessage = (ev) => {
     const m = JSON.parse(ev.data);
     q.push(m);
+    all.push(m);
     for (let i = waiters.length - 1; i >= 0; i--) {
       if (waiters[i].pred(m)) {
         waiters[i].resolve(m);
@@ -43,7 +46,7 @@ function mkClient(tag) {
     while (!open && Date.now() - t0 < 4000) await sleep(20);
     if (!open) throw new Error(tag + ': ws did not open');
   }
-  return { tag, ws, waitFor, openWS, send: (o) => ws.send(JSON.stringify(o)) };
+  return { tag, ws, waitFor, openWS, all, send: (o) => ws.send(JSON.stringify(o)) };
 }
 
 (async () => {
@@ -76,17 +79,25 @@ function mkClient(tag) {
     A.send({ t: 'create', name: 'Ada' });
     const aw = await A.waitFor(m => m.t === 'w');
     check('create -> welcome with code/token', !!aw.code && aw.seat === 0 && !!aw.token, aw);
+    check('welcome includes a valid arena', Maps.ids.indexOf(aw.map) !== -1, aw.map);
     await A.waitFor(m => m.t === 'wait');
+
+    // host picks an arena while waiting
+    A.send({ t: 'map', id: 'bamboo' });
+    const mapMsg = await A.waitFor(m => m.t === 'map');
+    check('host can pick the arena', mapMsg.id === 'bamboo');
 
     const B = mkClient('B');
     await B.openWS();
     B.send({ t: 'join', code: aw.code, name: 'Bob' });
     const bw = await B.waitFor(m => m.t === 'w');
     check('join -> seat 1', bw.seat === 1 && bw.code === aw.code);
+    check('joiner receives the host\'s arena', bw.map === 'bamboo', bw.map);
 
     const aStart = await A.waitFor(m => m.t === 'start');
     const bStart = await B.waitFor(m => m.t === 'start');
     check('both got start with names', aStart.names[1] === 'BOB' && bStart.names[0] === 'ADA', [aStart.names, bStart.names]);
+    check('match starts on the chosen arena', aStart.map === 'bamboo' && bStart.map === 'bamboo', [aStart.map, bStart.map]);
 
     const aState = await A.waitFor(m => m.t === 'st');
     check('state snapshots flowing', Array.isArray(aState.s.f) && aState.s.f.length === 2 && aState.s.ph === 'intro', aState.s.ph);
@@ -110,6 +121,11 @@ function mkClient(tag) {
       if (foe.hp < 100) hit = true;
     }
     check('online hit registered (B lost hp)', hit);
+
+    // arena is locked during a match, and only the host can change it anyway
+    B.send({ t: 'map', id: 'aurora' });
+    await sleep(600);
+    check('guest cannot change the arena', !B.all.some(m => m.t === 'map' && m.id === 'aurora'));
 
     // ---- ping ---------------------------------------------------------------
     A.send({ t: 'ping', ts: Date.now() });
